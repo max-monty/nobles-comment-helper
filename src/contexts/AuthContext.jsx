@@ -7,6 +7,8 @@ import { DEFAULT_MODEL } from '../lib/constants';
 
 const AuthContext = createContext(null);
 
+const ALLOWED_DOMAIN = 'nobles.edu';
+
 // Dev-only: fake user for preview testing (only active when ?dev=true in URL)
 const DEV_MODE = import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('dev');
 const DEV_USER = DEV_MODE ? {
@@ -16,10 +18,15 @@ const DEV_USER = DEV_MODE ? {
   photoURL: null,
 } : null;
 
+function isAllowedEmail(email) {
+  return email && email.endsWith(`@${ALLOWED_DOMAIN}`);
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(DEV_USER);
   const [loading, setLoading] = useState(!DEV_MODE);
   const [configError, setConfigError] = useState(!firebaseConfigured && !DEV_MODE);
+  const [domainError, setDomainError] = useState(false);
 
   useEffect(() => {
     if (DEV_MODE || !firebaseConfigured) {
@@ -29,6 +36,22 @@ export function AuthProvider({ children }) {
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Domain check: reject non-nobles.edu users immediately
+        if (!isAllowedEmail(firebaseUser.email)) {
+          // Delete the Firebase Auth user so it doesn't persist, then sign out
+          try {
+            await firebaseUser.delete();
+          } catch (e) {
+            // If delete fails (e.g., requires re-auth), just sign out
+            await firebaseSignOut(auth);
+          }
+          setUser(null);
+          setDomainError(true);
+          setLoading(false);
+          return;
+        }
+
+        setDomainError(false);
         setUser(firebaseUser);
         try {
           const teacherRef = doc(db, 'teachers', firebaseUser.uid);
@@ -63,15 +86,12 @@ export function AuthProvider({ children }) {
     if (!firebaseConfigured) {
       throw new Error('Firebase is not configured. Add your Firebase config to .env.local');
     }
+    setDomainError(false);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      // Restrict to @nobles.edu domain
-      const email = result.user?.email || '';
-      if (!email.endsWith('@nobles.edu')) {
-        await firebaseSignOut(auth);
-        throw new Error('Access is restricted to @nobles.edu accounts. Please sign in with your school email.');
-      }
+      await signInWithPopup(auth, googleProvider);
+      // Domain check happens in onAuthStateChanged above
     } catch (error) {
+      if (error.code === 'auth/popup-closed-by-user') return;
       console.error('Sign-in error:', error);
       throw error;
     }
@@ -86,7 +106,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, configError }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut, configError, domainError }}>
       {children}
     </AuthContext.Provider>
   );
