@@ -46,7 +46,11 @@ export default function TopNav() {
       </div>
 
       <div className="flex items-center gap-3">
-        {user?.photoURL ? (
+        {user?.isAnonymous ? (
+          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-500">
+            G
+          </div>
+        ) : user?.photoURL ? (
           <img
             src={user.photoURL}
             alt=""
@@ -59,7 +63,7 @@ export default function TopNav() {
           </div>
         )}
         <span className="text-sm text-slate-600 hidden sm:block">
-          {user?.displayName?.split(' ')[0]}
+          {user?.isAnonymous ? 'Guest' : user?.displayName?.split(' ')[0]}
         </span>
         <button
           onClick={signOut}

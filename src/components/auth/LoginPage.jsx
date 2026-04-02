@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function LoginPage() {
-  const { signIn, configError, domainError } = useAuth();
+  const { signIn, signInAsGuest, configError, domainError } = useAuth();
   const [error, setError] = useState(null);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -13,6 +13,18 @@ export default function LoginPage() {
       await signIn();
     } catch (err) {
       setError(err.message || 'Sign-in failed. Please try again.');
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleGuest = async () => {
+    setError(null);
+    setSigningIn(true);
+    try {
+      await signInAsGuest();
+    } catch (err) {
+      setError(err.message || 'Guest sign-in failed. Please try again.');
     } finally {
       setSigningIn(false);
     }
@@ -47,8 +59,9 @@ export default function LoginPage() {
                     Nobles account required
                   </p>
                   <p className="text-xs text-amber-700 leading-relaxed">
-                    Comment Helper is only available to Nobles faculty.
-                    Please sign in with your <strong>@nobles.edu</strong> Google account.
+                    Full access is for Nobles faculty only.
+                    Please sign in with your <strong>@nobles.edu</strong> Google account,
+                    or continue as a guest to explore.
                   </p>
                 </div>
               )}
@@ -73,6 +86,23 @@ export default function LoginPage() {
                 {signingIn ? 'Signing in...' : domainError ? 'Try Again with @nobles.edu' : 'Sign in with Google'}
               </button>
 
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-white px-3 text-xs text-slate-400">or</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleGuest}
+                disabled={signingIn}
+                className="w-full px-4 py-2.5 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Continue as Guest
+              </button>
+
               {error && (
                 <p className="mt-4 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
                   {error}
@@ -83,7 +113,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          For Nobles faculty. Sign in with your @nobles.edu account.
+          Nobles faculty sign in with @nobles.edu. Guests can explore with limited features.
         </p>
       </div>
     </div>

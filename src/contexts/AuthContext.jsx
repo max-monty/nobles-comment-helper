@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInAnonymously, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, googleProvider, db, firebaseConfigured } from '../config/firebase';
 import { DEFAULT_SYSTEM_PROMPT } from '../lib/defaultPrompts';
@@ -16,6 +16,7 @@ const DEV_USER = DEV_MODE ? {
   email: 'dev@test.local',
   displayName: 'Dev Teacher',
   photoURL: null,
+  isAnonymous: false,
 } : null;
 
 function isAllowedEmail(email) {
@@ -36,13 +37,19 @@ export function AuthProvider({ children }) {
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Anonymous users are allowed through
+        if (firebaseUser.isAnonymous) {
+          setDomainError(false);
+          setUser(firebaseUser);
+          setLoading(false);
+          return;
+        }
+
         // Domain check: reject non-nobles.edu users immediately
         if (!isAllowedEmail(firebaseUser.email)) {
-          // Delete the Firebase Auth user so it doesn't persist, then sign out
           try {
             await firebaseUser.delete();
           } catch (e) {
-            // If delete fails (e.g., requires re-auth), just sign out
             await firebaseSignOut(auth);
           }
           setUser(null);
@@ -89,10 +96,22 @@ export function AuthProvider({ children }) {
     setDomainError(false);
     try {
       await signInWithPopup(auth, googleProvider);
-      // Domain check happens in onAuthStateChanged above
     } catch (error) {
       if (error.code === 'auth/popup-closed-by-user') return;
       console.error('Sign-in error:', error);
+      throw error;
+    }
+  };
+
+  const signInAsGuest = async () => {
+    if (!firebaseConfigured) {
+      throw new Error('Firebase is not configured.');
+    }
+    setDomainError(false);
+    try {
+      await signInAnonymously(auth);
+    } catch (error) {
+      console.error('Guest sign-in error:', error);
       throw error;
     }
   };
@@ -102,11 +121,21 @@ export function AuthProvider({ children }) {
       setUser(null);
       return;
     }
+    // Delete anonymous user on sign-out so they don't accumulate
+    const currentUser = auth.currentUser;
+    if (currentUser?.isAnonymous) {
+      try {
+        await currentUser.delete();
+        return;
+      } catch (e) {
+        // Fall through to normal sign-out
+      }
+    }
     await firebaseSignOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, configError, domainError }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signInAsGuest, signOut, configError, domainError }}>
       {children}
     </AuthContext.Provider>
   );
